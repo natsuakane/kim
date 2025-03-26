@@ -9,6 +9,7 @@ use crossterm::{
 };
 use std::collections::VecDeque;
 use std::io::{self, Write};
+mod script;
 
 type Text = Vec<String>;
 
@@ -66,6 +67,21 @@ fn is_identifier_char(c: char) -> bool {
 }
 
 fn main() -> crossterm::Result<()> {
+    let mut result: String = String::new();
+    let mut lex: script::Lexer = script::Lexer::new(String::from("(+ (+ 1 4) 5)"));
+    lex.lex();
+    let parser = script::Parser::new(lex);
+    match script::Interpreter::new(parser).execute() {
+        Ok(res) => {
+            result += " ";
+            result += &(res.to_string().clone());
+        }
+        Err(msg) => {
+            result += " ";
+            result += &msg;
+        }
+    }
+
     // ターミナルの初期化
     let mut stdout = io::stdout();
     terminal::enable_raw_mode()?; // 生モード（キー入力をそのまま取得）
@@ -79,7 +95,7 @@ fn main() -> crossterm::Result<()> {
 
     const CURSOR_START_POS: usize = 6;
     let mut cursor_pos = (CURSOR_START_POS, 0); // カーソルの初期位置
-    let mut input_buffer: Text = vec![String::new()]; // 入力された文字を保持するバッファ
+    let mut input_buffer: Text = vec![result]; // 入力された文字を保持するバッファ
     let mut mode = Mode::Normal;
     let mut current_num = 0;
     let mut clipboard = Clipboard::new().unwrap();
