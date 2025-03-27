@@ -206,6 +206,7 @@ impl Parser {
 enum Value {
     Num(f64),
     Str(String),
+    Func(Vec<String>, Vec<AstNode>),
     Vector(Vec<Value>),
 }
 
@@ -266,8 +267,11 @@ impl Environment {
             Ok(())
         }
     }
-    pub fn new_env(&mut self) {
+    pub fn push_env(&mut self) {
         self.stack.push(HashMap::new());
+    }
+    pub fn pop_env(&mut self) {
+        self.stack.pop();
     }
 }
 
@@ -295,7 +299,7 @@ impl Interpreter {
         }
     }
 
-    fn to_number(&self, astnode: Value) -> Result<f64, String> {
+    fn to_number(&mut self, astnode: Value) -> Result<f64, String> {
         if let Value::Num(num) = astnode {
             Ok(num)
         } else {
@@ -304,7 +308,7 @@ impl Interpreter {
             ))
         }
     }
-    fn to_string(&self, astnode: Value) -> Result<String, String> {
+    fn to_string(&mut self, astnode: Value) -> Result<String, String> {
         if let Value::Str(str) = astnode {
             Ok(str)
         } else {
@@ -314,7 +318,7 @@ impl Interpreter {
         }
     }
 
-    fn eval(&self, astnode: AstNode) -> Result<Value, String> {
+    fn eval(&mut self, astnode: AstNode) -> Result<Value, String> {
         match astnode {
             AstNode::Number(num) => Ok(Value::Num(num)),
             AstNode::Str(str) => Ok(Value::Str(str)),
@@ -323,64 +327,52 @@ impl Interpreter {
                 "+" => {
                     self.check_children_num(children.clone(), 2)?;
                     let val1: Value = self.eval(children[0].clone())?;
+                    let val2: Value = self.eval(children[1].clone())?;
                     match self.to_number(val1.clone()) {
-                        Ok(num) => Ok(Value::Num(
-                            num + self.to_number(self.eval(children[1].clone())?)?,
-                        )),
+                        Ok(num) => Ok(Value::Num(num + self.to_number(val2)?)),
                         Err(_) => Ok(Value::Str(
                             self.to_string(val1.clone())?.clone()
-                                + self
-                                    .to_string(self.eval(children[1].clone())?)?
-                                    .clone()
-                                    .as_str(),
+                                + self.to_string(val2)?.clone().as_str(),
                         )),
                     }
                 }
                 "-" => {
                     self.check_children_num(children.clone(), 2)?;
-                    Ok(Value::Num(
-                        self.to_number(self.eval(children[0].clone())?)?
-                            - self.to_number(self.eval(children[1].clone())?)?,
-                    ))
+                    let val1: Value = self.eval(children[0].clone())?;
+                    let val2: Value = self.eval(children[1].clone())?;
+                    Ok(Value::Num(self.to_number(val1)? - self.to_number(val2)?))
                 }
                 "*" => {
                     self.check_children_num(children.clone(), 2)?;
-                    Ok(Value::Num(
-                        self.to_number(self.eval(children[0].clone())?)?
-                            * self.to_number(self.eval(children[1].clone())?)?,
-                    ))
+                    let val1: Value = self.eval(children[0].clone())?;
+                    let val2: Value = self.eval(children[1].clone())?;
+                    Ok(Value::Num(self.to_number(val1)? * self.to_number(val2)?))
                 }
                 "/" => {
                     self.check_children_num(children.clone(), 2)?;
-                    Ok(Value::Num(
-                        self.to_number(self.eval(children[0].clone())?)?
-                            / self.to_number(self.eval(children[1].clone())?)?,
-                    ))
+                    let val1: Value = self.eval(children[0].clone())?;
+                    let val2: Value = self.eval(children[1].clone())?;
+                    Ok(Value::Num(self.to_number(val1)? / self.to_number(val2)?))
                 }
                 "%" => {
                     self.check_children_num(children.clone(), 2)?;
-                    Ok(Value::Num(
-                        self.to_number(self.eval(children[0].clone())?)?
-                            % self.to_number(self.eval(children[1].clone())?)?,
-                    ))
+                    let val1: Value = self.eval(children[0].clone())?;
+                    let val2: Value = self.eval(children[1].clone())?;
+                    Ok(Value::Num(self.to_number(val1)? % self.to_number(val2)?))
                 }
                 "==" => {
                     self.check_children_num(children.clone(), 2)?;
                     let val1: Value = self.eval(children[0].clone())?;
+                    let val2: Value = self.eval(children[1].clone())?;
                     match self.to_number(val1.clone()) {
-                        Ok(num) => Ok(Value::Num(
-                            if num == self.to_number(self.eval(children[1].clone())?)? {
-                                1.0
-                            } else {
-                                0.0
-                            },
-                        )),
+                        Ok(num) => Ok(Value::Num(if num == self.to_number(val2)? {
+                            1.0
+                        } else {
+                            0.0
+                        })),
                         Err(_) => Ok(Value::Num(
                             if self.to_string(val1.clone())?.clone()
-                                == self
-                                    .to_string(self.eval(children[1].clone())?)?
-                                    .clone()
-                                    .as_str()
+                                == self.to_string(val2)?.clone().as_str()
                             {
                                 1.0
                             } else {
@@ -392,20 +384,16 @@ impl Interpreter {
                 "!=" => {
                     self.check_children_num(children.clone(), 2)?;
                     let val1: Value = self.eval(children[0].clone())?;
+                    let val2: Value = self.eval(children[1].clone())?;
                     match self.to_number(val1.clone()) {
-                        Ok(num) => Ok(Value::Num(
-                            if num != self.to_number(self.eval(children[1].clone())?)? {
-                                1.0
-                            } else {
-                                0.0
-                            },
-                        )),
+                        Ok(num) => Ok(Value::Num(if num != self.to_number(val2)? {
+                            1.0
+                        } else {
+                            0.0
+                        })),
                         Err(_) => Ok(Value::Num(
                             if self.to_string(val1.clone())?.clone()
-                                != self
-                                    .to_string(self.eval(children[1].clone())?)?
-                                    .clone()
-                                    .as_str()
+                                != self.to_string(val2)?.clone().as_str()
                             {
                                 1.0
                             } else {
@@ -416,10 +404,10 @@ impl Interpreter {
                 }
                 ">" => {
                     self.check_children_num(children.clone(), 2)?;
+                    let val1 = self.eval(children[0].clone())?;
+                    let val2 = self.eval(children[1].clone())?;
                     Ok(Value::Num(
-                        if self.to_number(self.eval(children[0].clone())?)?
-                            > self.to_number(self.eval(children[1].clone())?)?
-                        {
+                        if self.to_number(val1)? > self.to_number(val2)? {
                             1.0
                         } else {
                             0.0
@@ -428,10 +416,10 @@ impl Interpreter {
                 }
                 "<" => {
                     self.check_children_num(children.clone(), 2)?;
+                    let val1 = self.eval(children[0].clone())?;
+                    let val2 = self.eval(children[1].clone())?;
                     Ok(Value::Num(
-                        if self.to_number(self.eval(children[0].clone())?)?
-                            < self.to_number(self.eval(children[1].clone())?)?
-                        {
+                        if self.to_number(val1)? < self.to_number(val2)? {
                             1.0
                         } else {
                             0.0
@@ -440,10 +428,10 @@ impl Interpreter {
                 }
                 ">=" => {
                     self.check_children_num(children.clone(), 2)?;
+                    let val1 = self.eval(children[0].clone())?;
+                    let val2 = self.eval(children[1].clone())?;
                     Ok(Value::Num(
-                        if self.to_number(self.eval(children[0].clone())?)?
-                            >= self.to_number(self.eval(children[1].clone())?)?
-                        {
+                        if self.to_number(val1)? >= self.to_number(val2)? {
                             1.0
                         } else {
                             0.0
@@ -452,17 +440,60 @@ impl Interpreter {
                 }
                 "<=" => {
                     self.check_children_num(children.clone(), 2)?;
+                    let val1 = self.eval(children[0].clone())?;
+                    let val2 = self.eval(children[1].clone())?;
                     Ok(Value::Num(
-                        if self.to_number(self.eval(children[0].clone())?)?
-                            <= self.to_number(self.eval(children[1].clone())?)?
-                        {
+                        if self.to_number(val1)? <= self.to_number(val2)? {
                             1.0
                         } else {
                             0.0
                         },
                     ))
                 }
-                _ => Err(format!("invalid operater '{}'.", op)),
+                "set" => {
+                    self.check_children_num(children.clone(), 2)?;
+                    if let AstNode::Identifier(id) = &children[0] {
+                        let value: Value = self.eval(children[1].clone())?;
+                        self.environment.add(id.clone(), value.clone())?;
+                        Ok(value)
+                    } else {
+                        Err(format!("the given must be an identifier."))
+                    }
+                }
+                "func" => {
+                    self.check_children_num(children.clone(), 2)?;
+                    if let AstNode::IdList(li) = &children[0] {
+                        let mut vec: Vec<AstNode> = vec![];
+                        for i in 1..children.len() {
+                            vec.push(children[i].clone());
+                        }
+                        Ok(Value::Func(li.clone(), vec))
+                    } else {
+                        Err(format!("you must provide a list of arguments."))
+                    }
+                }
+                _ => {
+                    if let Ok(val) = self.environment.find(op.clone()) {
+                        if let Value::Func(args, code) = val {
+                            self.environment.push_env();
+                            self.check_children_num(children.clone(), args.len())?;
+                            for i in 0..args.len() {
+                                let ev = self.eval(children[i].clone())?;
+                                self.environment.add(args[i].clone(), ev.clone())?;
+                            }
+                            let mut res: Value = Value::Num(0.0);
+                            for c in code {
+                                res = self.eval(c)?.clone();
+                            }
+                            self.environment.pop_env();
+                            Ok(res)
+                        } else {
+                            Err(format!("variable '{}' is not function.", op.clone()))
+                        }
+                    } else {
+                        Err(format!("invalid operater '{}'.", op))
+                    }
+                }
             },
             _ => Err(format!("invalid astnode.")),
         }
@@ -479,6 +510,9 @@ impl Interpreter {
                 }
                 Value::Str(str) => {
                     res.push(str.clone());
+                }
+                Value::Func(_, _) => {
+                    res.push(format!("func"));
                 }
                 _ => {
                     return Err(format!("something is wrong"));
