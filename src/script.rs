@@ -38,17 +38,17 @@ impl Lexer {
         self.que.front().map(|t| t.clone())
     }
     pub fn lex(&mut self) {
-        let re =
-            Regex::new(r#"(?P<num>\d+(\.\d+)?)|(?P<id>[a-zA-Z][a-zA-Z0-9_]*)|(?P<literal>"(?:\\.|[^"\\])*?")|(?P<op>\S)"#)
-                .unwrap();
+        let operator_regex = Regex::new(r#"(?P<num>\d+(\.\d+)?([eE][+-]?\d+)?)|(?P<id>[a-zA-Z][a-zA-Z0-9_]*)|(?P<literal>"(?:\\.|[^"\\])*?")|(?P<op>(==|!=|<=|>=|<|>|[-+*/%&|^=!]=?|<<=?|>>=?|&&|\|\||[\(\)\{\}\[\]]))"#).unwrap();
 
-        for cap in re.captures_iter(self.code.as_str()) {
+        for cap in operator_regex.captures_iter(self.code.as_str()) {
             if let Some(m) = cap.name("num") {
                 self.que.push_back(Token::Number(m.to_string()));
             } else if let Some(m) = cap.name("id") {
                 self.que.push_back(Token::Identifier(m.to_string()));
             } else if let Some(m) = cap.name("literal") {
-                self.que.push_back(Token::StringLiteral(m.to_string()));
+                self.que.push_back(Token::StringLiteral(String::from(
+                    &m.to_string()[1..m.len() - 1],
+                )));
             } else if let Some(m) = cap.name("op") {
                 self.que.push_back(Token::Identifier(m.to_string()));
             }
@@ -148,6 +148,14 @@ impl Parser {
             }
         }
     }
+    pub fn is_end(&self) -> bool {
+        if self.lexer.peek().unwrap().str() == "EOF".to_string() {
+            true
+        } else {
+            false
+        }
+    }
+
     fn get_id(&mut self) -> Result<String, String> {
         match self.lexer.read().unwrap() {
             Token::Identifier(id) => Ok(id),
@@ -296,6 +304,15 @@ impl Interpreter {
             ))
         }
     }
+    fn to_string(&self, astnode: Value) -> Result<String, String> {
+        if let Value::Str(str) = astnode {
+            Ok(str)
+        } else {
+            Err(format!(
+                "the value was expected to be a string, but it is of another type."
+            ))
+        }
+    }
 
     fn eval(&self, astnode: AstNode) -> Result<Value, String> {
         match astnode {
@@ -305,9 +322,144 @@ impl Interpreter {
             AstNode::Operater(op, children) => match op.as_str() {
                 "+" => {
                     self.check_children_num(children.clone(), 2)?;
+                    let val1: Value = self.eval(children[0].clone())?;
+                    match self.to_number(val1.clone()) {
+                        Ok(num) => Ok(Value::Num(
+                            num + self.to_number(self.eval(children[1].clone())?)?,
+                        )),
+                        Err(_) => Ok(Value::Str(
+                            self.to_string(val1.clone())?.clone()
+                                + self
+                                    .to_string(self.eval(children[1].clone())?)?
+                                    .clone()
+                                    .as_str(),
+                        )),
+                    }
+                }
+                "-" => {
+                    self.check_children_num(children.clone(), 2)?;
                     Ok(Value::Num(
                         self.to_number(self.eval(children[0].clone())?)?
-                            + self.to_number(self.eval(children[1].clone())?)?,
+                            - self.to_number(self.eval(children[1].clone())?)?,
+                    ))
+                }
+                "*" => {
+                    self.check_children_num(children.clone(), 2)?;
+                    Ok(Value::Num(
+                        self.to_number(self.eval(children[0].clone())?)?
+                            * self.to_number(self.eval(children[1].clone())?)?,
+                    ))
+                }
+                "/" => {
+                    self.check_children_num(children.clone(), 2)?;
+                    Ok(Value::Num(
+                        self.to_number(self.eval(children[0].clone())?)?
+                            / self.to_number(self.eval(children[1].clone())?)?,
+                    ))
+                }
+                "%" => {
+                    self.check_children_num(children.clone(), 2)?;
+                    Ok(Value::Num(
+                        self.to_number(self.eval(children[0].clone())?)?
+                            % self.to_number(self.eval(children[1].clone())?)?,
+                    ))
+                }
+                "==" => {
+                    self.check_children_num(children.clone(), 2)?;
+                    let val1: Value = self.eval(children[0].clone())?;
+                    match self.to_number(val1.clone()) {
+                        Ok(num) => Ok(Value::Num(
+                            if num == self.to_number(self.eval(children[1].clone())?)? {
+                                1.0
+                            } else {
+                                0.0
+                            },
+                        )),
+                        Err(_) => Ok(Value::Num(
+                            if self.to_string(val1.clone())?.clone()
+                                == self
+                                    .to_string(self.eval(children[1].clone())?)?
+                                    .clone()
+                                    .as_str()
+                            {
+                                1.0
+                            } else {
+                                0.0
+                            },
+                        )),
+                    }
+                }
+                "!=" => {
+                    self.check_children_num(children.clone(), 2)?;
+                    let val1: Value = self.eval(children[0].clone())?;
+                    match self.to_number(val1.clone()) {
+                        Ok(num) => Ok(Value::Num(
+                            if num != self.to_number(self.eval(children[1].clone())?)? {
+                                1.0
+                            } else {
+                                0.0
+                            },
+                        )),
+                        Err(_) => Ok(Value::Num(
+                            if self.to_string(val1.clone())?.clone()
+                                != self
+                                    .to_string(self.eval(children[1].clone())?)?
+                                    .clone()
+                                    .as_str()
+                            {
+                                1.0
+                            } else {
+                                0.0
+                            },
+                        )),
+                    }
+                }
+                ">" => {
+                    self.check_children_num(children.clone(), 2)?;
+                    Ok(Value::Num(
+                        if self.to_number(self.eval(children[0].clone())?)?
+                            > self.to_number(self.eval(children[1].clone())?)?
+                        {
+                            1.0
+                        } else {
+                            0.0
+                        },
+                    ))
+                }
+                "<" => {
+                    self.check_children_num(children.clone(), 2)?;
+                    Ok(Value::Num(
+                        if self.to_number(self.eval(children[0].clone())?)?
+                            < self.to_number(self.eval(children[1].clone())?)?
+                        {
+                            1.0
+                        } else {
+                            0.0
+                        },
+                    ))
+                }
+                ">=" => {
+                    self.check_children_num(children.clone(), 2)?;
+                    Ok(Value::Num(
+                        if self.to_number(self.eval(children[0].clone())?)?
+                            >= self.to_number(self.eval(children[1].clone())?)?
+                        {
+                            1.0
+                        } else {
+                            0.0
+                        },
+                    ))
+                }
+                "<=" => {
+                    self.check_children_num(children.clone(), 2)?;
+                    Ok(Value::Num(
+                        if self.to_number(self.eval(children[0].clone())?)?
+                            <= self.to_number(self.eval(children[1].clone())?)?
+                        {
+                            1.0
+                        } else {
+                            0.0
+                        },
                     ))
                 }
                 _ => Err(format!("invalid operater '{}'.", op)),
@@ -316,13 +468,23 @@ impl Interpreter {
         }
     }
 
-    pub fn execute(&mut self) -> Result<f64, String> {
-        let pro = self.parser.parse()?;
-        let val = self.eval(pro)?;
-        if let Value::Num(num) = val {
-            Ok(num)
-        } else {
-            Err(format!("something is wrong"))
+    pub fn execute(&mut self) -> Result<Vec<String>, String> {
+        let mut res: Vec<String> = vec![];
+        while !self.parser.is_end() {
+            let pro = self.parser.parse()?;
+            let val = self.eval(pro)?;
+            match val {
+                Value::Num(num) => {
+                    res.push(num.to_string().clone());
+                }
+                Value::Str(str) => {
+                    res.push(str.clone());
+                }
+                _ => {
+                    return Err(format!("something is wrong"));
+                }
+            }
         }
+        Ok(res)
     }
 }

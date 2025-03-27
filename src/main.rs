@@ -68,13 +68,17 @@ fn is_identifier_char(c: char) -> bool {
 
 fn main() -> crossterm::Result<()> {
     let mut result: String = String::new();
-    let mut lex: script::Lexer = script::Lexer::new(String::from("(+ (+ 1 4) 5)"));
+    let mut lex: script::Lexer = script::Lexer::new(String::from(
+        "(+ (/ 1 4) 5) (+ \"aaa\" \"bbb\") (== 5 3) (== 3 3) (== \"aaa\" \"bbb\") (!= \"aaa\" \"aaa\")",
+    ));
     lex.lex();
     let parser = script::Parser::new(lex);
     match script::Interpreter::new(parser).execute() {
         Ok(res) => {
-            result += " ";
-            result += &(res.to_string().clone());
+            for r in res {
+                result += " ";
+                result += &(r.clone());
+            }
         }
         Err(msg) => {
             result += " ";
