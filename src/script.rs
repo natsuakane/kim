@@ -529,6 +529,12 @@ impl Interpreter {
                     }
                     Ok(Value::Vector(vec.clone()))
                 }
+                "at" => {
+                    self.check_children_num(children.clone(), 2)?;
+                    let v: Value = self.eval(children[0].clone())?;
+                    let i: Value = self.eval(children[1].clone())?;
+                    Ok(self.to_vector(v)?.clone()[self.to_number(i)?.clone() as usize].clone())
+                }
                 _ => {
                     if let Ok(val) = self.environment.find(op.clone()) {
                         if let Value::Func(args, code) = val {
