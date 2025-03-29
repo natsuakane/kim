@@ -68,9 +68,8 @@ fn is_identifier_char(c: char) -> bool {
 
 fn main() -> crossterm::Result<()> {
     let mut result: String = String::new();
-    let mut lex: script::Lexer = script::Lexer::new(String::from(
-        "(set f (func {a b} (* (+ a 5) b))) (set g (func {f x} (f x 2))) (g f 5)",
-    ));
+    let mut lex: script::Lexer =
+        script::Lexer::new(String::from("(set a 0) (loop (!= a 10) (set a (+ a 1))) a"));
     lex.lex();
     let parser = script::Parser::new(lex);
     match script::Interpreter::new(parser).execute() {

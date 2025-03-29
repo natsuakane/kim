@@ -317,12 +317,30 @@ impl Interpreter {
             ))
         }
     }
+    fn to_vector(&mut self, astnode: Value) -> Result<Vec<Value>, String> {
+        if let Value::Vector(vec) = astnode {
+            Ok(vec)
+        } else {
+            Err(format!(
+                "the value was expected to be a vector, but it is of another type."
+            ))
+        }
+    }
 
     fn eval(&mut self, astnode: AstNode) -> Result<Value, String> {
         match astnode {
             AstNode::Number(num) => Ok(Value::Num(num)),
             AstNode::Str(str) => Ok(Value::Str(str)),
             AstNode::Identifier(id) => Ok(self.environment.find(id)?),
+            AstNode::List(list) => {
+                self.environment.push_env();
+                let mut res = Value::Num(0.0);
+                for astnode in list {
+                    res = self.eval(astnode)?.clone();
+                }
+                self.environment.pop_env();
+                Ok(res)
+            }
             AstNode::Operater(op, children) => match op.as_str() {
                 "+" => {
                     self.check_children_num(children.clone(), 2)?;
@@ -460,6 +478,16 @@ impl Interpreter {
                         Err(format!("the given must be an identifier."))
                     }
                 }
+                "const" => {
+                    self.check_children_num(children.clone(), 2)?;
+                    if let AstNode::Identifier(id) = &children[0] {
+                        let value: Value = self.eval(children[1].clone())?;
+                        self.environment.add_const(id.clone(), value.clone())?;
+                        Ok(value)
+                    } else {
+                        Err(format!("the given must be an identifier."))
+                    }
+                }
                 "func" => {
                     self.check_children_num(children.clone(), 2)?;
                     if let AstNode::IdList(li) = &children[0] {
@@ -471,6 +499,35 @@ impl Interpreter {
                     } else {
                         Err(format!("you must provide a list of arguments."))
                     }
+                }
+                "if" => {
+                    self.check_children_num(children.clone(), 3)?;
+                    let exp = self.eval(children[0].clone())?.clone();
+                    let block = if self.to_number(exp)? != 0.0 {
+                        self.eval(children[1].clone())?.clone()
+                    } else {
+                        self.eval(children[2].clone())?.clone()
+                    };
+                    Ok(block)
+                }
+                "loop" => {
+                    self.check_children_num(children.clone(), 2)?;
+                    let mut res = Value::Num(0.0);
+                    loop {
+                        let exp = self.eval(children[0].clone())?.clone();
+                        if self.to_number(exp)? == 0.0 {
+                            break;
+                        }
+                        res = self.eval(children[1].clone())?.clone();
+                    }
+                    Ok(res)
+                }
+                "vec" => {
+                    let mut vec: Vec<Value> = vec![];
+                    for v in children {
+                        vec.push(self.eval(v.clone())?.clone());
+                    }
+                    Ok(Value::Vector(vec.clone()))
                 }
                 _ => {
                     if let Ok(val) = self.environment.find(op.clone()) {
