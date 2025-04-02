@@ -10,6 +10,7 @@ use crossterm::{
 use std::collections::VecDeque;
 use std::env;
 use std::fs;
+use std::fs::File;
 use std::io::{self, Write};
 use std::path::PathBuf;
 mod script;
@@ -76,6 +77,14 @@ fn read_file(filename: &str) -> Vec<String> {
     }
 }
 
+fn write_file(filename: &str, buf: &Vec<String>) -> io::Result<()> {
+    let mut file = File::create(filename)?; // ファイルを作成
+    for line in buf {
+        writeln!(file, "{}", line)?; // 各行を書き込み（改行付き）
+    }
+    Ok(())
+}
+
 fn main() -> crossterm::Result<()> {
     let args: Vec<String> = env::args().collect();
     let filename = &args[1];
@@ -119,7 +128,7 @@ fn main() -> crossterm::Result<()> {
     let mut current_num = 0;
     let mut clipboard = Clipboard::new().unwrap();
     let mut recorder = UndoRedo::new();
-    let (width, height) = terminal::size().unwrap();
+    let (_, height) = terminal::size().unwrap();
     let mut upper: usize = 0;
 
     loop {
@@ -177,11 +186,11 @@ fn main() -> crossterm::Result<()> {
                                     && cursor_pos.1 + upper < input_buffer.len() - 1
                                 {
                                     cursor_pos.1 += 1;
-                                    if input_buffer[cursor_pos.1].len()
+                                    if input_buffer[cursor_pos.1 + upper].len()
                                         < cursor_pos.0 - CURSOR_START_POS
                                     {
-                                        cursor_pos.0 =
-                                            input_buffer[cursor_pos.1].len() + CURSOR_START_POS;
+                                        cursor_pos.0 = input_buffer[cursor_pos.1 + upper].len()
+                                            + CURSOR_START_POS;
                                     }
                                     if cursor_pos.1 == height as usize
                                         && input_buffer.len() >= cursor_pos.1 + upper
@@ -194,11 +203,11 @@ fn main() -> crossterm::Result<()> {
                             'k' => {
                                 if cursor_pos.1 > 0 {
                                     cursor_pos.1 -= 1;
-                                    if input_buffer[cursor_pos.1].len()
+                                    if input_buffer[cursor_pos.1 + upper].len()
                                         < cursor_pos.0 - CURSOR_START_POS
                                     {
-                                        cursor_pos.0 =
-                                            input_buffer[cursor_pos.1].len() + CURSOR_START_POS;
+                                        cursor_pos.0 = input_buffer[cursor_pos.1 + upper].len()
+                                            + CURSOR_START_POS;
                                     }
                                 } else if upper > 0 {
                                     upper -= 1;
@@ -206,7 +215,7 @@ fn main() -> crossterm::Result<()> {
                             }
                             'l' => {
                                 if cursor_pos.0
-                                    < input_buffer[cursor_pos.1].len() + CURSOR_START_POS
+                                    < input_buffer[cursor_pos.1 + upper].len() + CURSOR_START_POS
                                 {
                                     cursor_pos.0 += 1;
                                 }
@@ -221,7 +230,7 @@ fn main() -> crossterm::Result<()> {
                             }
                             'o' => {
                                 mode = Mode::Insert;
-                                input_buffer.insert(cursor_pos.1 + 1, String::new());
+                                input_buffer.insert(cursor_pos.1 + upper, String::new());
                                 cursor_pos.1 += 1;
                                 cursor_pos.0 = CURSOR_START_POS;
                             }
@@ -364,7 +373,8 @@ fn main() -> crossterm::Result<()> {
                                 _ => {}
                             }
                             // 文字が入力された場合、それをバッファに追加
-                            input_buffer[cursor_pos.1].insert(cursor_pos.0 - CURSOR_START_POS, c);
+                            input_buffer[cursor_pos.1 + upper]
+                                .insert(cursor_pos.0 - CURSOR_START_POS, c);
                             cursor_pos.0 += 1; // カーソル位置を右に移動
                         }
                     },
@@ -379,7 +389,7 @@ fn main() -> crossterm::Result<()> {
 
         // バッファを行単位で描画
         for (line_number, line) in input_buffer.iter().enumerate() {
-            if line_number < upper || line_number > upper + height as usize {
+            if line_number < upper || line_number >= upper + height as usize {
                 continue;
             }
             // 行ごとに表示
@@ -401,17 +411,22 @@ fn main() -> crossterm::Result<()> {
         if cursor_pos.1 >= input_buffer.len() {
             cursor_pos.1 = input_buffer.len() - 1;
         }
-        if cursor_pos.0 > input_buffer.last().unwrap().len() + CURSOR_START_POS {
-            cursor_pos.0 = input_buffer.last().unwrap().len() + CURSOR_START_POS - 1;
-        }
+        //if cursor_pos.0 > input_buffer.last().unwrap().len() + CURSOR_START_POS {
+        //    cursor_pos.0 = input_buffer.last().unwrap().len() + CURSOR_START_POS - 1;
+        //}
         // カーソルを現在の位置に移動
         stdout.execute(cursor::MoveTo(cursor_pos.0 as u16, cursor_pos.1 as u16))?;
         stdout.flush()?; // バッファの内容を画面に反映
     }
 
     // 終了処理
-
     terminal::disable_raw_mode()?;
     execute!(stdout, LeaveAlternateScreen).unwrap();
-    Ok(())
+    match write_file(filename, input_buffer.clone().as_ref()) {
+        Ok(_) => Ok(()),
+        Err(_) => {
+            println!("Could not write to file '{}'!", filename);
+            Ok(())
+        }
+    }
 }
