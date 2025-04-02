@@ -577,6 +577,9 @@ impl Interpreter {
                 Value::Func(_, _) => {
                     res.push(format!("func"));
                 }
+                Value::Vector(_) => {
+                    res.push(format!("vec"));
+                }
                 _ => {
                     return Err(format!("something is wrong"));
                 }

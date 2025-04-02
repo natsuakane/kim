@@ -8,7 +8,10 @@ use crossterm::{
     ExecutableCommand,
 };
 use std::collections::VecDeque;
+use std::env;
+use std::fs;
 use std::io::{self, Write};
+use std::path::PathBuf;
 mod script;
 
 type Text = Vec<String>;
@@ -66,10 +69,22 @@ fn is_identifier_char(c: char) -> bool {
     }
 }
 
+fn read_file(filename: &str) -> Vec<String> {
+    match fs::read_to_string(filename) {
+        Ok(contents) => contents.lines().map(String::from).collect(),
+        Err(_) => vec![format!("ファイルを読み込めませんでした:{}", filename)],
+    }
+}
+
 fn main() -> crossterm::Result<()> {
+    let args: Vec<String> = env::args().collect();
+    let filename = &args[1];
+    let mut filepath = PathBuf::from(env::current_dir().unwrap());
+    filepath.push(filename);
+
+    /*
     let mut result: String = String::new();
-    let mut lex: script::Lexer =
-        script::Lexer::new(String::from("(set a 0) (loop (!= a 10) (set a (+ a 1))) a"));
+    let mut lex: script::Lexer = script::Lexer::new(String::from(""));
     lex.lex();
     let parser = script::Parser::new(lex);
     match script::Interpreter::new(parser).execute() {
@@ -84,6 +99,7 @@ fn main() -> crossterm::Result<()> {
             result += &msg;
         }
     }
+    */
 
     // ターミナルの初期化
     let mut stdout = io::stdout();
@@ -98,11 +114,13 @@ fn main() -> crossterm::Result<()> {
 
     const CURSOR_START_POS: usize = 6;
     let mut cursor_pos = (CURSOR_START_POS, 0); // カーソルの初期位置
-    let mut input_buffer: Text = vec![result]; // 入力された文字を保持するバッファ
+    let mut input_buffer: Text = read_file(filepath.to_str().unwrap()); // 入力された文字を保持するバッファ
     let mut mode = Mode::Normal;
     let mut current_num = 0;
     let mut clipboard = Clipboard::new().unwrap();
     let mut recorder = UndoRedo::new();
+    let (width, height) = terminal::size().unwrap();
+    let mut upper: usize = 0;
 
     loop {
         // ユーザーの入力を待つ
@@ -155,7 +173,8 @@ fn main() -> crossterm::Result<()> {
                                 }
                             }
                             'j' => {
-                                if input_buffer.len() != 0 && cursor_pos.1 < input_buffer.len() - 1
+                                if input_buffer.len() != 0
+                                    && cursor_pos.1 + upper < input_buffer.len() - 1
                                 {
                                     cursor_pos.1 += 1;
                                     if input_buffer[cursor_pos.1].len()
@@ -163,6 +182,12 @@ fn main() -> crossterm::Result<()> {
                                     {
                                         cursor_pos.0 =
                                             input_buffer[cursor_pos.1].len() + CURSOR_START_POS;
+                                    }
+                                    if cursor_pos.1 == height as usize
+                                        && input_buffer.len() >= cursor_pos.1 + upper
+                                    {
+                                        upper += 1;
+                                        cursor_pos.1 -= 1;
                                     }
                                 }
                             }
@@ -175,6 +200,8 @@ fn main() -> crossterm::Result<()> {
                                         cursor_pos.0 =
                                             input_buffer[cursor_pos.1].len() + CURSOR_START_POS;
                                     }
+                                } else if upper > 0 {
+                                    upper -= 1;
                                 }
                             }
                             'l' => {
@@ -351,8 +378,10 @@ fn main() -> crossterm::Result<()> {
         stdout.execute(terminal::Clear(ClearType::All))?; // 画面をクリア
 
         // バッファを行単位で描画
-        let mut cols = 0;
         for (line_number, line) in input_buffer.iter().enumerate() {
+            if line_number < upper || line_number > upper + height as usize {
+                continue;
+            }
             // 行ごとに表示
             execute!(
                 stdout,
@@ -366,9 +395,8 @@ fn main() -> crossterm::Result<()> {
                 Print(format!("{}\r\n", line))
             )
             .unwrap();
-            cols += 1;
         }
-        execute!(stdout, Print(format!("{:>5} ", cols))).unwrap();
+        execute!(stdout, Print(format!("{:>5} ", input_buffer.len()))).unwrap();
         // カーソルの位置を調整
         if cursor_pos.1 >= input_buffer.len() {
             cursor_pos.1 = input_buffer.len() - 1;
@@ -382,6 +410,7 @@ fn main() -> crossterm::Result<()> {
     }
 
     // 終了処理
+
     terminal::disable_raw_mode()?;
     execute!(stdout, LeaveAlternateScreen).unwrap();
     Ok(())
