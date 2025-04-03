@@ -1,9 +1,9 @@
 use arboard::Clipboard;
 use crossterm::{
-    cursor,
+    cursor::{position, MoveTo},
     event::{self, KeyCode},
     execute,
-    style::{Color, Print, SetForegroundColor},
+    style::{Color, Print, ResetColor, SetBackgroundColor, SetForegroundColor},
     terminal::{self, ClearType, EnterAlternateScreen, LeaveAlternateScreen},
     ExecutableCommand,
 };
@@ -91,24 +91,16 @@ fn main() -> crossterm::Result<()> {
     let mut filepath = PathBuf::from(env::current_dir().unwrap());
     filepath.push(filename);
 
-    /*
-    let mut result: String = String::new();
     let mut lex: script::Lexer = script::Lexer::new(String::from(""));
     lex.lex();
-    let parser = script::Parser::new(lex);
-    match script::Interpreter::new(parser).execute() {
-        Ok(res) => {
-            for r in res {
-                result += " ";
-                result += &(r.clone());
-            }
-        }
+    let mut parser = script::Parser::new(lex);
+    let mut interpreter: script::Interpreter = match parser.program() {
+        Ok(pro) => script::Interpreter::new(pro),
         Err(msg) => {
-            result += " ";
-            result += &msg;
+            println!("Parsing Error: {}.", msg);
+            return Ok(());
         }
-    }
-    */
+    };
 
     // ターミナルの初期化
     let mut stdout = io::stdout();
@@ -384,7 +376,7 @@ fn main() -> crossterm::Result<()> {
         }
 
         // 入力された内容を表示
-        stdout.execute(cursor::MoveTo(0, 0))?; // カーソルを先頭に戻す
+        stdout.execute(MoveTo(0, 0))?; // カーソルを先頭に戻す
         stdout.execute(terminal::Clear(ClearType::All))?; // 画面をクリア
 
         // バッファを行単位で描画
@@ -411,11 +403,32 @@ fn main() -> crossterm::Result<()> {
         if cursor_pos.1 >= input_buffer.len() {
             cursor_pos.1 = input_buffer.len() - 1;
         }
-        //if cursor_pos.0 > input_buffer.last().unwrap().len() + CURSOR_START_POS {
-        //    cursor_pos.0 = input_buffer.last().unwrap().len() + CURSOR_START_POS - 1;
-        //}
+
+        match interpreter.execute() {
+            Ok(res) => {
+                for com in res {
+                    match com {
+                        script::Command::Paint(x, y, col) => {
+                            execute!(
+                                stdout,
+                                MoveTo(x as u16, y as u16), // カーソル位置へ移動
+                                SetBackgroundColor(col),    // 背景色を青に
+                                Print(" "),                 // 1文字分塗る
+                                ResetColor                  // 色をリセット
+                            )
+                            .unwrap();
+                        }
+                    }
+                }
+            }
+            Err(msg) => {
+                println!("Execution Error: {}.", msg);
+                return Ok(());
+            }
+        }
+
         // カーソルを現在の位置に移動
-        stdout.execute(cursor::MoveTo(cursor_pos.0 as u16, cursor_pos.1 as u16))?;
+        stdout.execute(MoveTo(cursor_pos.0 as u16, cursor_pos.1 as u16))?;
         stdout.flush()?; // バッファの内容を画面に反映
     }
 

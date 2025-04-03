@@ -1,3 +1,4 @@
+use crossterm::style::Color;
 use regex::Regex;
 use std::collections::HashMap;
 use std::collections::VecDeque;
@@ -200,6 +201,19 @@ impl Parser {
             }
         }
     }
+
+    pub fn program(&mut self) -> Result<Vec<AstNode>, String> {
+        let mut res: Vec<AstNode> = vec![];
+        while !self.is_end() {
+            res.push(self.parse()?);
+        }
+        Ok(res)
+    }
+}
+
+#[derive(Clone)]
+pub enum Command {
+    Paint(i64, i64, Color),
 }
 
 #[derive(Clone)]
@@ -208,6 +222,7 @@ enum Value {
     Str(String),
     Func(Vec<String>, Vec<AstNode>),
     Vector(Vec<Value>),
+    Com(Command),
 }
 
 struct Environment {
@@ -276,14 +291,14 @@ impl Environment {
 }
 
 pub struct Interpreter {
-    parser: Parser,
     environment: Environment,
+    program: Vec<AstNode>,
 }
 impl Interpreter {
-    pub fn new(par: Parser) -> Self {
+    pub fn new(pro: Vec<AstNode>) -> Self {
         Self {
-            parser: par,
             environment: Environment::new(),
+            program: pro,
         }
     }
 
@@ -535,6 +550,28 @@ impl Interpreter {
                     let i: Value = self.eval(children[1].clone())?;
                     Ok(self.to_vector(v)?.clone()[self.to_number(i)?.clone() as usize].clone())
                 }
+                /*
+                "setat" => {
+                    self.check_children_num(children.clone(), 3)?;
+                    if let AstNode::Identifier(id) = &children[0] {
+                        let index: Value = self.eval(children[1].clone())?;
+                        let vec: Value = self.environment.find(id.clone())?;
+                        Ok(value)
+                    } else {
+                        Err(format!("the given must be an identifier."))
+                    }
+                }
+                */
+                "paint" => {
+                    self.check_children_num(children.clone(), 2)?;
+                    let x: Value = self.eval(children[0].clone())?;
+                    let y: Value = self.eval(children[1].clone())?;
+                    Ok(Value::Com(Command::Paint(
+                        self.to_number(x)? as i64,
+                        self.to_number(y)? as i64,
+                        Color::Blue,
+                    )))
+                }
                 _ => {
                     if let Ok(val) = self.environment.find(op.clone()) {
                         if let Value::Func(args, code) = val {
@@ -562,12 +599,12 @@ impl Interpreter {
         }
     }
 
-    pub fn execute(&mut self) -> Result<Vec<String>, String> {
-        let mut res: Vec<String> = vec![];
-        while !self.parser.is_end() {
-            let pro = self.parser.parse()?;
-            let val = self.eval(pro)?;
+    pub fn execute(&mut self) -> Result<Vec<Command>, String> {
+        let mut res: Vec<Command> = vec![];
+        for ast in self.program.clone() {
+            let val = self.eval(ast)?;
             match val {
+                /*
                 Value::Num(num) => {
                     res.push(num.to_string().clone());
                 }
@@ -580,9 +617,11 @@ impl Interpreter {
                 Value::Vector(_) => {
                     res.push(format!("vec"));
                 }
-                _ => {
-                    return Err(format!("something is wrong"));
+                */
+                Value::Com(command) => {
+                    res.push(command.clone());
                 }
+                _ => {}
             }
         }
         Ok(res)

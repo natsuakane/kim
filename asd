@@ -1,3 +1,5 @@
+ vec 2
+ Number '1' is not identifier.
 aaaaasidjfdiowajsdfw
 aaaaaaaa
 iasjasdjfowa
