@@ -292,12 +292,14 @@ impl Environment {
 
 pub struct Interpreter {
     environment: Environment,
+    commands: Vec<Command>,
     program: Vec<AstNode>,
 }
 impl Interpreter {
     pub fn new(pro: Vec<AstNode>) -> Self {
         Self {
             environment: Environment::new(),
+            commands: vec![],
             program: pro,
         }
     }
@@ -348,12 +350,10 @@ impl Interpreter {
             AstNode::Str(str) => Ok(Value::Str(str)),
             AstNode::Identifier(id) => Ok(self.environment.find(id)?),
             AstNode::List(list) => {
-                self.environment.push_env();
                 let mut res = Value::Num(0.0);
                 for astnode in list {
                     res = self.eval(astnode)?.clone();
                 }
-                self.environment.pop_env();
                 Ok(res)
             }
             AstNode::Operater(op, children) => match op.as_str() {
@@ -563,14 +563,30 @@ impl Interpreter {
                 }
                 */
                 "paint" => {
-                    self.check_children_num(children.clone(), 2)?;
+                    self.check_children_num(children.clone(), 5)?;
                     let x: Value = self.eval(children[0].clone())?;
                     let y: Value = self.eval(children[1].clone())?;
-                    Ok(Value::Com(Command::Paint(
+                    let rgbvalue: (Value, Value, Value) = (
+                        self.eval(children[2].clone())?,
+                        self.eval(children[3].clone())?,
+                        self.eval(children[4].clone())?,
+                    );
+                    let rgb: (f64, f64, f64) = (
+                        self.to_number(rgbvalue.0)?,
+                        self.to_number(rgbvalue.1)?,
+                        self.to_number(rgbvalue.2)?,
+                    );
+                    let com = Command::Paint(
                         self.to_number(x)? as i64,
                         self.to_number(y)? as i64,
-                        Color::Blue,
-                    )))
+                        Color::Rgb {
+                            r: rgb.0 as u8,
+                            g: rgb.1 as u8,
+                            b: rgb.2 as u8,
+                        },
+                    );
+                    self.commands.push(com.clone());
+                    Ok(Value::Com(com.clone()))
                 }
                 _ => {
                     if let Ok(val) = self.environment.find(op.clone()) {
@@ -601,6 +617,7 @@ impl Interpreter {
 
     pub fn execute(&mut self) -> Result<Vec<Command>, String> {
         let mut res: Vec<Command> = vec![];
+        self.commands = vec![];
         for ast in self.program.clone() {
             let val = self.eval(ast)?;
             match val {
@@ -614,16 +631,20 @@ impl Interpreter {
                 Value::Func(_, _) => {
                     res.push(format!("func"));
                 }
-                Value::Vector(_) => {
-                    res.push(format!("vec"));
-                }
                 */
+                Value::Vector(vec) => {
+                    for e in vec {
+                        if let Value::Com(com) = e {
+                            res.push(com.clone())
+                        }
+                    }
+                }
                 Value::Com(command) => {
                     res.push(command.clone());
                 }
                 _ => {}
             }
         }
-        Ok(res)
+        Ok(self.commands.clone())
     }
 }

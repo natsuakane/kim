@@ -91,13 +91,16 @@ fn main() -> crossterm::Result<()> {
     let mut filepath = PathBuf::from(env::current_dir().unwrap());
     filepath.push(filename);
 
-    let mut lex: script::Lexer = script::Lexer::new(String::from(""));
+    //(loop (!= i 100) [(set i (+ i 1)) (paint 10 i (* i 100) i i)])
+    let mut lex: script::Lexer = script::Lexer::new(String::from(
+        "(set i 0) (loop (< i 30) [(set i (+ i 1)) (paint 0 i (* i 8) 0 0)])",
+    ));
     lex.lex();
     let mut parser = script::Parser::new(lex);
     let mut interpreter: script::Interpreter = match parser.program() {
         Ok(pro) => script::Interpreter::new(pro),
         Err(msg) => {
-            println!("Parsing Error: {}.", msg);
+            eprintln!("Parsing Error: {}.", msg);
             return Ok(());
         }
     };
@@ -404,6 +407,8 @@ fn main() -> crossterm::Result<()> {
             cursor_pos.1 = input_buffer.len() - 1;
         }
 
+        /*
+        スクリプト処理
         match interpreter.execute() {
             Ok(res) => {
                 for com in res {
@@ -422,10 +427,11 @@ fn main() -> crossterm::Result<()> {
                 }
             }
             Err(msg) => {
-                println!("Execution Error: {}.", msg);
+                eprintln!("Execution Error: {}.", msg);
                 return Ok(());
             }
         }
+        */
 
         // カーソルを現在の位置に移動
         stdout.execute(MoveTo(cursor_pos.0 as u16, cursor_pos.1 as u16))?;
@@ -438,7 +444,7 @@ fn main() -> crossterm::Result<()> {
     match write_file(filename, input_buffer.clone().as_ref()) {
         Ok(_) => Ok(()),
         Err(_) => {
-            println!("Could not write to file '{}'!", filename);
+            eprintln!("Could not write to file '{}'!", filename);
             Ok(())
         }
     }
