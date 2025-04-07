@@ -239,7 +239,7 @@ fn main() -> crossterm::Result<()> {
                                     cursor_pos.0 -= 1;
                                 }
                             }
-                            'z' => {
+                            'X' => {
                                 if cursor_pos.0
                                     < input_buffer[cursor_pos.1].len() + CURSOR_START_POS
                                 {
@@ -354,6 +354,26 @@ fn main() -> crossterm::Result<()> {
                                     }
                                 }
                             }
+                            '$' => {
+                                cursor_pos.0 = input_buffer[cursor_pos.1].len() + CURSOR_START_POS;
+                            }
+                            '^' => {
+                                cursor_pos.0 = CURSOR_START_POS;
+                            }
+                            'g' => {
+                                cursor_pos.1 = 0;
+                            }
+                            'G' => {
+                                if current_num == 0 {
+                                    cursor_pos.1 = input_buffer.len() - 1;
+                                } else {
+                                    if current_num as usize >= input_buffer.len() {
+                                        current_num = input_buffer.len() as i32;
+                                    }
+                                    cursor_pos.1 = current_num as usize - 1;
+                                    current_num = 0;
+                                }
+                            }
                             _ => {}
                         },
                         Mode::Insert => {
@@ -391,7 +411,7 @@ fn main() -> crossterm::Result<()> {
             execute!(
                 stdout,
                 SetForegroundColor(Color::DarkYellow),
-                Print(format!("{:>5} ", line_number))
+                Print(format!("{:>5} ", line_number + 1))
             )
             .unwrap();
             execute!(
