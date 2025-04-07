@@ -133,25 +133,24 @@ fn main() -> crossterm::Result<()> {
                 match key_event.code {
                     KeyCode::Enter => {
                         // Enterキーが押された場合、新しい行に移動
-                        input_buffer.insert(cursor_pos.1 + 1, String::new());
-                        input_buffer[cursor_pos.1 + 1] = String::from(
-                            input_buffer[cursor_pos.1]
-                                .get(
-                                    cursor_pos.0 - CURSOR_START_POS
-                                        ..input_buffer[cursor_pos.1].len(),
-                                )
-                                .unwrap(),
-                        );
-                        input_buffer[cursor_pos.1] = String::from(
-                            input_buffer[cursor_pos.1]
-                                .get(0..cursor_pos.0 - CURSOR_START_POS)
-                                .unwrap(),
-                        );
-                        cursor_pos.1 += 1; // 行番号をインクリメント
-                        cursor_pos.0 = CURSOR_START_POS; // 行の先頭に戻す
+                        mode = Mode::Insert;
+                        let mut spaces = String::new();
+                        for i in 0..input_buffer[cursor_pos.1 + upper].len() {
+                            if input_buffer[cursor_pos.1 + upper].chars().nth(i).unwrap() != ' ' {
+                                break;
+                            }
+                            spaces += " ";
+                        }
+                        input_buffer.insert(cursor_pos.1 + upper + 1, spaces.clone());
+                        cursor_pos.1 += 1;
+                        cursor_pos.0 = CURSOR_START_POS + spaces.len();
                     }
                     KeyCode::Esc => {
                         mode = Mode::Normal;
+                    }
+                    KeyCode::Tab => {
+                        input_buffer[cursor_pos.1] += "    ";
+                        cursor_pos.0 += 4;
                     }
                     KeyCode::Char(c) => match mode {
                         Mode::Normal => match c {
@@ -225,25 +224,34 @@ fn main() -> crossterm::Result<()> {
                             }
                             'o' => {
                                 mode = Mode::Insert;
-                                input_buffer.insert(cursor_pos.1 + upper, String::new());
+                                let mut spaces = String::new();
+                                for i in 0..input_buffer[cursor_pos.1 + upper].len() {
+                                    if input_buffer[cursor_pos.1 + upper].chars().nth(i).unwrap()
+                                        != ' '
+                                    {
+                                        break;
+                                    }
+                                    spaces += " ";
+                                }
+                                input_buffer.insert(cursor_pos.1 + upper + 1, spaces.clone());
                                 cursor_pos.1 += 1;
-                                cursor_pos.0 = CURSOR_START_POS;
+                                cursor_pos.0 = CURSOR_START_POS + spaces.len();
                             }
                             // remove char
                             'x' => {
                                 if cursor_pos.0 > CURSOR_START_POS
-                                    && input_buffer[cursor_pos.1].len() != 0
+                                    && input_buffer[cursor_pos.1 + upper].len() != 0
                                 {
-                                    input_buffer[cursor_pos.1]
+                                    input_buffer[cursor_pos.1 + upper]
                                         .remove(cursor_pos.0 - CURSOR_START_POS - 1);
                                     cursor_pos.0 -= 1;
                                 }
                             }
                             'X' => {
                                 if cursor_pos.0
-                                    < input_buffer[cursor_pos.1].len() + CURSOR_START_POS
+                                    < input_buffer[cursor_pos.1 + upper].len() + CURSOR_START_POS
                                 {
-                                    input_buffer[cursor_pos.1]
+                                    input_buffer[cursor_pos.1 + upper]
                                         .remove(cursor_pos.0 - CURSOR_START_POS);
                                 }
                             }
@@ -254,14 +262,14 @@ fn main() -> crossterm::Result<()> {
                                     current_num = 1;
                                 }
                                 for i in 0..current_num {
-                                    if cursor_pos.1 >= input_buffer.len() {
+                                    if cursor_pos.1 + upper >= input_buffer.len() {
                                         break;
                                     }
                                     if i != 0 {
                                         str += "\n";
                                     }
-                                    str += &input_buffer[cursor_pos.1];
-                                    input_buffer.remove(cursor_pos.1 as usize);
+                                    str += &input_buffer[cursor_pos.1 + upper];
+                                    input_buffer.remove(cursor_pos.1 as usize + upper);
                                 }
                                 clipboard.set_text(str.as_str()).unwrap();
                                 current_num = 0;
@@ -277,13 +285,13 @@ fn main() -> crossterm::Result<()> {
                                     current_num = 1;
                                 }
                                 for i in 0..current_num {
-                                    if cursor_pos.1 + i as usize >= input_buffer.len() {
+                                    if cursor_pos.1 + upper + i as usize >= input_buffer.len() {
                                         break;
                                     }
                                     if i != 0 {
                                         str += "\n";
                                     }
-                                    str += &input_buffer[cursor_pos.1 + i as usize];
+                                    str += &input_buffer[cursor_pos.1 + i as usize + upper];
                                 }
                                 clipboard.set_text(str.as_str()).unwrap();
                                 current_num = 0;
@@ -293,7 +301,8 @@ fn main() -> crossterm::Result<()> {
                                 let str = clipboard.get_text().unwrap();
                                 let cols: Vec<&str> = str.split('\n').collect();
                                 for i in 0..cols.len() {
-                                    input_buffer.insert(cursor_pos.1 + i, cols[i].to_string());
+                                    input_buffer
+                                        .insert(cursor_pos.1 + upper + i, cols[i].to_string());
                                 }
                             }
                             // next or prev word
@@ -370,7 +379,12 @@ fn main() -> crossterm::Result<()> {
                                     if current_num as usize >= input_buffer.len() {
                                         current_num = input_buffer.len() as i32;
                                     }
-                                    cursor_pos.1 = current_num as usize - 1;
+                                    if current_num < 5 {
+                                        upper = 0;
+                                    } else {
+                                        upper = current_num as usize - 5;
+                                    }
+                                    cursor_pos.1 = current_num as usize - upper - 1;
                                     current_num = 0;
                                 }
                             }
